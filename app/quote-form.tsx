@@ -3,6 +3,7 @@
 export default function QuoteForm() {
   return (
     <form className="quote-form" action="https://formsubmit.co/info@switchfixelectrical.com" method="POST">
+      <input type="hidden" name="_cc" value="duanesmith45@gmail.com" />
       <input type="hidden" name="_subject" value="New website inquiry — Switch & Fix" />
       <input type="hidden" name="_template" value="table" />
       <input type="hidden" name="_autoresponse" value="Thank you for contacting Switch & Fix. We will follow up to discuss your needs and availability. Your inquiry does not confirm an appointment." />

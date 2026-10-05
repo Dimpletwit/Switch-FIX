@@ -1,4 +1,4 @@
-import QuoteForm from "./quote-form";
+export default function QuoteForm() {
 
 const services = [
   ["01", "Lighting & fans", "Light fixtures, ceiling fans, and thoughtful upgrades that brighten your space."],

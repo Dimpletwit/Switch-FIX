@@ -1,6 +1,7 @@
 "use client";
 
-import QuoteForm from "./quote-form";
+export default function QuoteForm() {
+  return (
     <form className="quote-form" action="https://formsubmit.co/info@switchfixelectrical.com" method="POST">
       <input type="hidden" name="_cc" value="duanesmith45@gmail.com" />
       <input type="hidden" name="_subject" value="New website inquiry — Switch & Fix" />

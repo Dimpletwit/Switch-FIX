@@ -12,7 +12,7 @@ export default function QuoteForm() {
       <label>Name<input name="name" autoComplete="name" required placeholder="Your name" /></label>
       <label>Email<input name="email" type="email" autoComplete="email" required placeholder="you@example.com" /></label>
       <label>Phone<input name="phone" type="tel" autoComplete="tel" required placeholder="Your phone number" /></label>
-      <label>Service needed<select name="service" defaultValue="" required><option value="" disabled>Select a service</option><option>Lighting &amp; ceiling fans</option><option>Switches, outlets &amp; smart devices</option><option>Electrical troubleshooting</option><option>Safety detectors</option><option>TV mounting &amp; furniture assembly</option><option>Drywall &amp; small repairs</option><option>Other</option></select></label>
+      <label>Service needed<select name="service" defaultValue="" required><option value="" disabled>Select a service</option><option>Lighting &amp; ceiling fans</option><option>Switches, outlets &amp; smart devices</option><option>Electrical troubleshooting</option><option>Safety detectors</option><option>TV mounting &amp; furniture assembly</option><option>Drywall &amp; small repairs</option><option>Electrical Rough-Ins</option><option>Electrical Trim-Outs</option><option>Other</option></select></label>
       <label>Tell us about the job<textarea name="details" rows={4} required placeholder="What needs attention?" /></label>
       <button className="button" type="submit">Send Inquiry</button>
       <small>Submitting an inquiry does not confirm an appointment. We’ll contact you to discuss your needs and availability.</small>

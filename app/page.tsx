@@ -8,6 +8,8 @@ const services = [
   ["05", "Mounting & assembly", "TV mounting and furniture assembly for homes and workplaces."],
   ["06", "Drywall touch-ups", "Minor drywall repair following electrical work or small installations."],
   ["07", "Everyday repairs", "Door hardware, shelving, and the small fixes that keep a space working well."],
+  ["08", "Electrical Rough-Ins", "Electrical wiring and box placement for new construction and renovation projects before walls are finished."],
+  ["09", "Electrical Trim-Outs", "Installation of switches, outlets, fixtures, and finishing components after walls and surfaces are complete."],
 ];
 
 export default function Home() {

@@ -21,7 +21,7 @@
   "vars": {
     "ACCESS_ISSUER": "https://still-cake-62a8.cloudflareaccess.com",
     "ACCESS_AUD": "37a4b5570d24b26a38749613521ddad9fe66bb2267f908827bb73bd821df0845",
-    "STAFF_EMAILS": "info@switchfixelectrical.com"
+    "STAFF_EMAILS": "info@switchfixelectrical.com,duanesmith45@gmail.com"
   },
   "triggers": {
     "crons": [

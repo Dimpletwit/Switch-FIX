@@ -16,60 +16,33 @@
   that doing so shares the trip coordinates with OpenStreetMap. No map API key is needed.
 - Job photo metadata is removed when the browser redraws images before uploading.
 
-The dashboard is **not production-ready until the account setup below is completed**.
-Without Access configuration, protected routes return 503; without a valid signed
-Access JWT and an allowed staff email, they return 401. There is no development
-password, public bypass, or browser-only protection.
+## Configured deployment
 
-## Cloudflare setup (account owner)
+The account owner created D1 `switch-fix-jobs` and executed the three-table
+migration in the Cloudflare console on October 16, 2026. The verified database ID,
+JOBS_DB binding, hourly cleanup trigger, Access issuer, application audience,
+and exact staff allowlist are included in `wrangler.jsonc`.
 
-1. Create a Cloudflare D1 database named `switch-fix-jobs`. Add this root-level
-   binding to `wrangler.jsonc`, using the real returned database ID:
+Cloudflare Access application `62ddd4fa-85bf-4b05-819b-6ed88d13f697`
+covers `www.switchfixelectrical.com/team` and
+`www.switchfixelectrical.com/api/team`, including their child paths.
+Its only Allow include rule is `info@switchfixelectrical.com`.
+One-time PIN is enabled on the account. The public website, `/track`, and
+`/api/tracking` remain outside Access.
 
-   ```json
-   "d1_databases": [{
-     "binding": "JOBS_DB",
-     "database_name": "switch-fix-jobs",
-     "database_id": "<actual-database-id>",
-     "migrations_dir": "migrations"
-   }],
-   "triggers": { "crons": ["0 * * * *"] }
-   ```
+The Worker independently validates signed Access JWTs, their issuer, audience,
+expiry, and exact approved staff email. Direct workers.dev requests cannot
+bypass authentication. These configuration identifiers are public identifiers,
+not passwords or API credentials.
 
-   No placeholder database ID has been added to the production configuration.
-   Apply the migration before deployment:
+After deployment, verify an allowed and denied staff session. On an actual phone,
+log in at `/team`, create a test appointment, consent to location sharing,
+select On My Way, and copy the private customer link. Open it in a separate
+private browser. Verify fresh and stale locations, Stop sharing, Mark Arrived,
+denied geolocation, and expiration before adding real customer records.
 
-   ```sh
-   npx wrangler d1 migrations apply JOBS_DB --remote
-   ```
-
-2. Create one Cloudflare Access self-hosted application covering BOTH paths on
-   `www.switchfixelectrical.com`: `/team*` and `/api/team*`. Use the same Access
-   application/audience for both. Permit only the exact staff login email addresses
-   approved by the owner. Email one-time PIN is suitable if enabled in Access.
-   Do not add a Bypass or Everyone policy. Do not protect `/track` or `/api/tracking`.
-   Staff sessions are independently verified by the Worker, so a workers.dev URL
-   cannot bypass authentication.
-
-3. Configure Worker variables/secrets:
-
-   - `ACCESS_ISSUER`: `https://<your-team>.cloudflareaccess.com` (no trailing slash).
-   - `ACCESS_AUD`: the application audience tag from step 2.
-   - `STAFF_EMAILS`: comma-separated exact approved staff emails.
-
-   None of these values are filled with guessed account information. Set them through
-   the Cloudflare dashboard or `wrangler secret put NAME`. Never put passwords or
-   private customer information in this public repository.
-
-4. Run `npm run build`, deploy the generated Worker using the project's existing
-   Cloudflare build pipeline, and verify both an allowed and a denied staff session.
-   Ensure the D1 binding is preserved in the deployment configuration.
-
-5. On an actual phone, log in at `/team`, create a test appointment, consent to
-   location sharing, select On My Way, and copy the generated private customer link.
-   Open it in a separate private browser. Verify fresh and stale locations, Stop
-   sharing, Mark Arrived, denied geolocation, and expiration. Do not start with
-   real customer records until these checks pass.
+For future databases, apply `migrations/0001_job_tracker.sql` before deployment.
+The migration uses IF NOT EXISTS and can be safely re-applied to this database.
 
 ## Operation and limits
 

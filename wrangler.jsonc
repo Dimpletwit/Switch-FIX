@@ -3,9 +3,29 @@
   "name": "switch-fix",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-01",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
     "binding": "ASSETS"
   },
-  "workers_dev": true
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "JOBS_DB",
+      "database_name": "switch-fix-jobs",
+      "database_id": "9fbefeab-e13b-40dd-95fb-59898b2e567e",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "ACCESS_ISSUER": "https://still-cake-62a8.cloudflareaccess.com",
+    "ACCESS_AUD": "37a4b5570d24b26a38749613521ddad9fe66bb2267f908827bb73bd821df0845",
+    "STAFF_EMAILS": "info@switchfixelectrical.com"
+  },
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  }
 }

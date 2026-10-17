@@ -1,3 +1,4 @@
+import { notificationReadiness, notifyEvent, publicOrigin } from './notifications.mjs';
 import { teamPage, customerPage } from './tracker-pages.mjs';
 
 const statuses = ['New inquiry', 'Estimate prepared', 'Scheduled', 'On the way', 'Arrived', 'Completed'];
@@ -62,7 +63,28 @@ function cleanJob(input) {
   if (!statuses.includes(input.status)) error('Invalid job status.'); job.status = input.status;
   for (const name of ['estimateCents', 'paidCents']) { if (!Number.isSafeInteger(input[name]) || input[name] < 0 || input[name] > 100000000) error('Invalid payment amount.'); job[name] = input[name]; }
   if (job.paidCents > job.estimateCents) error('Payments cannot exceed the estimate.');
+  job.smsConsent = input.smsConsent === true;
+  job.emailConsent = input.emailConsent === true;
+  job.smsConsentEvidence = typeof input.smsConsentEvidence === 'string' ? input.smsConsentEvidence.trim() : '';
+  if (job.smsConsentEvidence.length > 500) error('Consent reference is too long.');
+  if (job.smsConsent && (!job.phone || !job.smsConsentEvidence)) error('Record the SMS consent source before enabling texts for this customer.');
+  if (job.emailConsent && !job.email) error('An email address is required for email updates.');
   return job;
+}
+function recordConsent(next, previous, staffEmail) {
+  if (previous?.smsConsent && next.smsConsent && previous.phone !== next.phone) error('Uncheck SMS consent and save the new phone number, then record consent for that number.');
+  next.smsConsentRecordedAt = next.smsConsent ? (previous?.smsConsent && previous.smsConsentEvidence === next.smsConsentEvidence ? previous.smsConsentRecordedAt : new Date().toISOString()) : null;
+  next.smsConsentRecordedBy = next.smsConsent ? (previous?.smsConsent && previous.smsConsentEvidence === next.smsConsentEvidence ? previous.smsConsentRecordedBy : staffEmail) : null;
+}
+async function jobNotifications(env, current, previous, kind, trackingUrl) {
+  // No automatic replay when a channel is enabled: only future job events send.
+  let confirmation;
+  if (current.smsConsent && (!previous?.smsConsent || previous.smsConsentEvidence !== current.smsConsentEvidence)) {
+    confirmation = await notifyEvent(env, current, current.id + ':consent:' + current.smsConsentRecordedAt, 'opt-in');
+  }
+  let updates;
+  if (kind) updates = await notifyEvent(env, current, current.id + ':' + kind + ':' + current.version, kind, trackingUrl);
+  return { confirmation, updates, readiness: notificationReadiness(env) };
 }
 async function jobRow(db, id) { const row = await db.prepare('SELECT * FROM tracker_jobs WHERE id = ?').bind(id).first(); if (!row) error('Job not found.', 404); return row; }
 const unpack = row => ({ id: row.id, ...JSON.parse(row.data), version: row.version, updatedAt: row.updated_at });
@@ -74,10 +96,11 @@ export async function handleTracker(request, env) {
   const publicRoute = path === '/track' || path === '/api/tracking';
   if (!staff && !publicRoute) return null;
   try {
-    if (staff) await verifyStaff(request, env);
+    const staffEmail = staff ? await verifyStaff(request, env) : null;
     if (request.method !== 'GET' && request.headers.get('Origin') !== url.origin) error('Request origin not permitted.', 403);
     if ((path === '/team' || path === '/team/') && request.method === 'GET') return html(teamPage);
     if (path === '/track' && request.method === 'GET') return html(customerPage);
+    if (path === '/api/team/notifications' && request.method === 'GET') return reply({ channels: notificationReadiness(env) });
     const db = env.JOBS_DB; if (!db) error('Job storage has not been connected.', 503);
     await clearExpiredLocations(env);
     if (path === '/api/tracking' && request.method === 'GET') {
@@ -96,9 +119,12 @@ export async function handleTracker(request, env) {
     }
     if (path === '/api/team/jobs' && request.method === 'POST') {
       const job = cleanJob(await jsonBody(request)); if (['On the way', 'Arrived'].includes(job.status)) error('Create the job before starting a trip.');
+      recordConsent(job, null, staffEmail);
       const id = crypto.randomUUID(); const date = new Date().toISOString();
       await db.prepare('INSERT INTO tracker_jobs(id,data,created_at,updated_at) VALUES (?,?,?,?)').bind(id, JSON.stringify(job), date, date).run();
-      return reply({ job: unpack(await jobRow(db, id)) }, 201);
+      const saved = unpack(await jobRow(db, id));
+      const notifications = await jobNotifications(env, saved, null, saved.status === 'Scheduled' ? 'scheduled' : null);
+      return reply({ job: saved, notifications }, 201);
     }
     const match = path.match(/^\/api\/team\/jobs\/([a-f0-9-]{36})(?:\/(trip|location|photos))?$/);
     if (!match) error('Not found.', 404);
@@ -106,25 +132,34 @@ export async function handleTracker(request, env) {
     if (!action && request.method === 'PATCH') {
       const data = await jsonBody(request); if (data.version !== row.version) error('This job changed. Reload before saving.', 409);
       const next = cleanJob(data); if (next.status === 'On the way' && job.status !== 'On the way') error('Use On My Way to start sharing.');
+      recordConsent(next, job, staffEmail);
       const result = await db.prepare('UPDATE tracker_jobs SET data=?,version=version+1,updated_at=? WHERE id=? AND version=?').bind(JSON.stringify(next), new Date().toISOString(), id, row.version).run();
       if (result.meta.changes !== 1) error('This job changed. Reload before saving.', 409);
       if (next.status !== 'On the way') await db.prepare('UPDATE tracker_trips SET active=0,latitude=NULL,longitude=NULL,accuracy=NULL,location_at=NULL WHERE job_id=?').bind(id).run();
-      return reply({ job: unpack(await jobRow(db, id)) });
+      const saved = unpack(await jobRow(db, id));
+      const kind = saved.status === 'Scheduled' && (job.status !== 'Scheduled' || job.appointment !== saved.appointment) ? 'scheduled' : null;
+      const notifications = await jobNotifications(env, saved, job, kind);
+      return reply({ job: saved, notifications });
     }
     if (action === 'trip' && request.method === 'POST') {
       const data = await jsonBody(request); if (data.consent !== true) error('Technician location consent is required.');
       if (job.status === 'Completed') error('Completed jobs cannot start a trip.');
       const token = base64url(crypto.getRandomValues(new Uint8Array(32))); const expires = Date.now() + 8 * 3600000;
-      const next = cleanJob({ ...job, status: 'On the way' });
+      const next = { ...job, ...cleanJob({ ...job, status: 'On the way' }) };
+      delete next.id; delete next.version; delete next.updatedAt;
       await db.batch([
         db.prepare('UPDATE tracker_trips SET active=0,latitude=NULL,longitude=NULL,accuracy=NULL,location_at=NULL WHERE job_id=?').bind(id),
         db.prepare('INSERT INTO tracker_trips(token_hash,job_id,expires_at) VALUES(?,?,?)').bind(await tokenHash(token), id, expires),
         db.prepare('UPDATE tracker_jobs SET data=?,version=version+1,updated_at=? WHERE id=?').bind(JSON.stringify(next), new Date().toISOString(), id),
       ]);
-      return reply({ trackingUrl: url.origin + '/track#' + token, expiresAt: expires, job: unpack(await jobRow(db, id)) });
+      const saved = unpack(await jobRow(db, id));
+      const trackingUrl = publicOrigin + '/track#' + token;
+      const notifications = await jobNotifications(env, saved, job, 'on-the-way', trackingUrl);
+      return reply({ trackingUrl, expiresAt: expires, job: saved, notifications });
     }
     if (action === 'trip' && request.method === 'DELETE') {
-      const next = cleanJob({ ...job, status: job.status === 'On the way' ? 'Scheduled' : job.status });
+      const next = { ...job, ...cleanJob({ ...job, status: job.status === 'On the way' ? 'Scheduled' : job.status }) };
+      delete next.id; delete next.version; delete next.updatedAt;
       await db.batch([db.prepare('UPDATE tracker_trips SET active=0,latitude=NULL,longitude=NULL,accuracy=NULL,location_at=NULL WHERE job_id=?').bind(id), db.prepare('UPDATE tracker_jobs SET data=?,version=version+1,updated_at=? WHERE id=?').bind(JSON.stringify(next), new Date().toISOString(), id)]);
       return reply({ job: unpack(await jobRow(db, id)) });
     }
@@ -148,3 +183,4 @@ export async function handleTracker(request, env) {
     error('Method not allowed.', 405);
   } catch (err) { return reply({ error: err.status ? err.message : 'The job service is temporarily unavailable.' }, err.status || 503); }
 }
+
